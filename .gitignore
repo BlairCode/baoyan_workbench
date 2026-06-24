@@ -1,0 +1,55 @@
+# Personal data and local runtime state
+保研准备/
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+*.backup
+
+# Documents and private application materials
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+*.csv
+*.tsv
+*.xmind
+
+# Images can contain private screenshots/certificates in this project
+screenshots/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+
+# Public README screenshots, sanitized only
+!imgs/
+!imgs/总览页.png
+!imgs/套磁页.png
+!imgs/资源页.png
+!imgs/院校页.png
+!imgs/待办页.png
+!imgs/面试页.png
+
+# Python/runtime caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local/editor/Codex metadata
+.agents/
+.codex/
+.env
+.env.*
+*.log
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

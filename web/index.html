@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>推免准备工作台</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">推</div>
+        <div>
+          <h1>推免准备</h1>
+          <p>本地私有工作台</p>
+        </div>
+      </div>
+      <nav id="nav"></nav>
+      <div class="sidebar-foot">
+        <button class="ghost" id="scanBtn" title="重新扫描保研准备文件夹">扫描材料</button>
+        <button class="ghost" id="backupBtn" title="备份当前数据库">备份数据</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Today</p>
+          <h2 id="pageTitle">总览</h2>
+        </div>
+        <div class="search">
+          <input id="searchInput" placeholder="搜索当前页面" />
+        </div>
+      </header>
+
+      <section id="toast" class="toast" hidden></section>
+      <section id="app"></section>
+    </main>
+
+    <dialog id="editor">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-head">
+          <h3 id="editorTitle">编辑</h3>
+          <button value="cancel" class="icon-btn" title="关闭">×</button>
+        </div>
+        <div id="editorFields" class="form-grid"></div>
+        <menu>
+          <button value="cancel" class="secondary">取消</button>
+          <button id="saveBtn" value="default" class="primary">保存</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="papersDialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-head">
+          <h3 id="papersTitle">导师论文</h3>
+          <button value="cancel" class="icon-btn" title="关闭">×</button>
+        </div>
+        <div id="papersList" class="paper-dialog-body"></div>
+      </form>
+    </dialog>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

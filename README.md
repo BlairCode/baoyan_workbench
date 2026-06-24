@@ -2,7 +2,7 @@
 
 一个面向保研、推免、夏令营、预推免准备的本地私有网页。它把院校项目、导师套磁、材料文件、待办事项和面试题库集中到一个轻量工作台里，适合需要长期整理资料、快速打开本地文件、跟踪申请进度的同学。
 
-系统默认运行在本机，个人资料和数据库不需要上传到云端。公开仓库只建议保存程序代码和已脱敏截图。
+系统默认运行在本机，个人资料和数据库不需要上传到云端。
 
 ## 截图
 
@@ -74,14 +74,11 @@ python app.py
 
 ## 推荐目录结构
 
-公开仓库建议只保留源码、README 和已脱敏截图：
-
 ```text
 .
 ├─ app.py
 ├─ start.bat
 ├─ README.md
-├─ PUBLIC_UPLOAD_CHECKLIST.md
 ├─ .gitignore
 ├─ web/
 │  ├─ index.html
@@ -96,7 +93,7 @@ python app.py
    └─ 面试页.png
 ```
 
-本地运行后会自动使用或生成下面这些私有目录，它们不应提交到 GitHub：
+本地运行后会自动使用或生成下面这些私有目录：
 
 ```text
 data/
@@ -135,54 +132,3 @@ data/
 9. “删除文件”会删除本地文件，操作前请确认。
 10. 经常点击“备份数据”，备份 SQLite 数据库。
 
-## 隐私与公开上传
-
-这个项目很适合开源代码，但不适合上传个人数据。提交前请确认：
-
-- 不上传 `保研准备/`。
-- 不上传 `data/`、`*.db`、数据库备份。
-- 不上传简历、成绩单、证明、证书、套磁信、导师论文、申请表、账号截图等文件。
-- 只上传已经脱敏的 `imgs/` 截图。
-- 不要把整个项目文件夹压缩后直接上传。
-
-推荐在提交前执行：
-
-```powershell
-git status --short
-git status --ignored --short
-git ls-files
-```
-
-更多检查步骤见 [PUBLIC_UPLOAD_CHECKLIST.md](PUBLIC_UPLOAD_CHECKLIST.md)。
-
-## 可以直接使用原目录上传吗
-
-可以，但风险比单独导出一个公开目录更高。若直接使用原目录，建议只执行精确添加：
-
-```powershell
-git add .gitignore README.md PUBLIC_UPLOAD_CHECKLIST.md app.py start.bat web imgs
-```
-
-不要在原目录里使用 `git add .`，除非你已经逐项确认没有任何个人资料会被提交。
-
-## 仓库命名建议
-
-推荐仓库名：
-
-- `baoyan-workbench`
-- `tuimian-workbench`
-- `postgrad-recommendation-workbench`
-- `baoyan-local-dashboard`
-- `tuimian-application-manager`
-
-推荐 GitHub 简介：
-
-```text
-一个本地运行的推免/保研准备工作台，用于管理院校项目、导师套磁、材料文件、待办事项和面试题库。
-```
-
-更偏英文受众可以用：
-
-```text
-A local-first dashboard for Chinese graduate recommendation preparation, covering programs, professors, documents, todos, and interview notes.
-```

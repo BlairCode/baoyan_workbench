@@ -5,6 +5,7 @@ const state = {
   contactData: null,
   resourceMode: "category",
   options: null,
+  settings: null,
 };
 
 const pages = [
@@ -26,7 +27,6 @@ const schemas = {
       ["stage", "阶段"],
       ["date_text", "时间"],
       ["status", "状态"],
-      ["result", "结果"],
       ["note", "备注"],
     ],
     fields: [
@@ -37,8 +37,7 @@ const schemas = {
       { key: "date_text", label: "时间" },
       { key: "account", label: "账号" },
       { key: "password", label: "密码" },
-      { key: "status", label: "状态", options: ["关注中", "准备材料", "已报名", "已入营", "已参营", "已放弃", "结束"] },
-      { key: "result", label: "结果", options: ["", "待定", "入营", "优营", "候补", "未入营", "通过", "未通过"] },
+      { key: "status", label: "状态", options: ["关注中", "准备材料", "已报名", "已入营", "已参营", "优营", "候补", "通过", "未入营", "未通过", "已放弃", "结束"] },
       { key: "note", label: "备注", type: "textarea", full: true },
     ],
   },
@@ -52,7 +51,7 @@ const schemas = {
       { key: "direction", label: "研究方向", full: true },
       { key: "email", label: "邮箱" },
       { key: "homepage", label: "主页" },
-      { key: "status", label: "状态", options: ["未联系", "已准备套磁信", "已发送", "已回复", "约面试", "无回复", "暂缓", "已归档"] },
+      { key: "status", label: "状态", options: ["未联系", "已准备套磁信", "已发送", "养鱼", "已回复", "约面试", "面试通过", "无回复", "默拒", "拒绝", "暂缓", "已归档"] },
       { key: "display_order", label: "排序", type: "number" },
       { key: "note", label: "备注", type: "textarea", full: true },
     ],
@@ -145,6 +144,27 @@ function toast(message) {
   }, 2800);
 }
 
+async function loadSettings() {
+  state.settings = await api("/api/settings");
+  applySettings();
+}
+
+function applySettings() {
+  const settings = state.settings || {};
+  const brandTitle = settings.brandTitle || "推免准备";
+  const workspaceName = settings.workspaceName || "本地私有工作台";
+  $("#brandTitle").textContent = brandTitle;
+  $("#workspaceName").textContent = workspaceName;
+  document.title = `${brandTitle}工作台`;
+  document.body.dataset.theme = settings.theme || "default";
+  const mark = $("#brandMark");
+  if (settings.avatarUrl) {
+    mark.innerHTML = `<img src="${settings.avatarUrl}" alt="" />`;
+  } else {
+    mark.textContent = (settings.avatarText || "推").slice(0, 2);
+  }
+}
+
 function renderNav() {
   $("#nav").innerHTML = pages
     .map(
@@ -209,6 +229,9 @@ async function renderDashboard() {
         <div class="panel-head"><h3>待办</h3><button class="secondary" data-jump="tasks">管理</button></div>
         <div class="panel-body no-scroll">${renderSimpleList(data.openTasks, "title", "scope", "due_date")}</div>
       </div>
+    </section>
+    <section class="motto-banner">
+      <p>${escapeHtml(state.settings?.motto || "金鳞岂是池中物，一遇风云便化龙")}</p>
     </section>
   `;
   bindCommonActions();
@@ -638,6 +661,45 @@ async function openEditor(page, row = null) {
   dialog.showModal();
 }
 
+function openSettings() {
+  const dialog = $("#settingsDialog");
+  const settings = state.settings || {};
+  dialog.querySelector('[name="brandTitle"]').value = settings.brandTitle || "推免准备";
+  dialog.querySelector('[name="workspaceName"]').value = settings.workspaceName || "本地私有工作台";
+  dialog.querySelector('[name="avatarText"]').value = settings.avatarText || "推";
+  dialog.querySelector('[name="motto"]').value = settings.motto || "金鳞岂是池中物，一遇风云便化龙";
+  dialog.querySelector('[name="theme"]').value = settings.theme || "default";
+  $("#avatarInput").value = "";
+  $("#saveSettingsBtn").onclick = saveSettings;
+  dialog.showModal();
+}
+
+async function saveSettings(event) {
+  event.preventDefault();
+  const dialog = $("#settingsDialog");
+  const payload = {
+    brandTitle: dialog.querySelector('[name="brandTitle"]').value.trim() || "推免准备",
+    workspaceName: dialog.querySelector('[name="workspaceName"]').value.trim() || "本地私有工作台",
+    avatarText: dialog.querySelector('[name="avatarText"]').value.trim() || "推",
+    motto: dialog.querySelector('[name="motto"]').value.trim() || "金鳞岂是池中物，一遇风云便化龙",
+    theme: dialog.querySelector('[name="theme"]').value,
+  };
+  state.settings = await api("/api/settings", { method: "PATCH", body: JSON.stringify(payload) });
+  const avatar = $("#avatarInput").files[0];
+  if (avatar) {
+    const form = new FormData();
+    form.append("avatar", avatar);
+    const response = await fetch("/api/settings/avatar", { method: "POST", body: form });
+    const data = await response.json();
+    if (!response.ok) return toast(data.error || "头像上传失败");
+    state.settings = data;
+  }
+  applySettings();
+  dialog.close();
+  toast("设置已保存");
+  render();
+}
+
 function normalizeMaterialPayload(payload) {
   const stageMap = {
     基本材料: "通用",
@@ -727,6 +789,7 @@ async function backupData() {
 
 $("#scanBtn").addEventListener("click", scanMaterials);
 $("#backupBtn").addEventListener("click", backupData);
+$("#settingsBtn").addEventListener("click", openSettings);
 let searchTimer = null;
 $("#searchInput").addEventListener("input", (event) => {
   window.clearTimeout(searchTimer);
@@ -736,7 +799,9 @@ $("#searchInput").addEventListener("input", (event) => {
   }, 160);
 });
 
-render().catch((error) => {
-  console.error(error);
-  toast(error.message);
-});
+loadSettings()
+  .then(render)
+  .catch((error) => {
+    console.error(error);
+    toast(error.message);
+  });

@@ -23,6 +23,14 @@ DB_PATH = DATA_DIR / "app.db"
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("BAOYAN_PORT", "8848"))
 
+DEFAULT_SETTINGS = {
+    "brandTitle": "推免准备",
+    "workspaceName": "本地私有工作台",
+    "avatarText": "推",
+    "motto": "金鳞岂是池中物，一遇风云便化龙",
+    "theme": "default",
+}
+
 
 def now_text() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -153,6 +161,12 @@ def init_db() -> None:
                 created_at text not null,
                 updated_at text not null
             );
+
+            create table if not exists settings (
+                key text primary key,
+                value text not null default '',
+                updated_at text not null
+            );
             """
         )
         ensure_column(conn, "materials", "relative_path", "text not null default ''")
@@ -162,6 +176,11 @@ def init_db() -> None:
         ensure_column(conn, "materials", "related_program", "text not null default ''")
         ensure_column(conn, "materials", "missing", "integer not null default 0")
         ensure_column(conn, "professors", "display_order", "integer not null default 0")
+        for key, value in DEFAULT_SETTINGS.items():
+            conn.execute(
+                "insert or ignore into settings (key, value, updated_at) values (?, ?, ?)",
+                (key, value, now_text()),
+            )
 
 
 def normalize_category(value: str) -> str:
@@ -419,6 +438,29 @@ def normalize_existing_materials() -> None:
             )
 
 
+def normalize_program_results() -> None:
+    result_to_status = {
+        "入营": "已入营",
+        "优营": "优营",
+        "候补": "候补",
+        "未入营": "未入营",
+        "通过": "通过",
+        "未通过": "未通过",
+    }
+    with db() as conn:
+        rows = conn.execute("select id, status, result from programs where trim(result) != ''").fetchall()
+        for row in rows:
+            result = row["result"]
+            if result in {"待定", row["status"]}:
+                new_status = row["status"]
+            else:
+                new_status = result_to_status.get(result, result)
+            conn.execute(
+                "update programs set status = ?, result = '', updated_at = ? where id = ?",
+                (new_status, now_text(), row["id"]),
+            )
+
+
 def seed_professor_profiles() -> None:
     # Public template: profile enrichment belongs in local data, not source code.
     return
@@ -427,6 +469,65 @@ def seed_professor_profiles() -> None:
 def seed_paper_attribution() -> None:
     # Public template: paper-to-professor rules are user-specific local data.
     return
+
+
+def read_settings() -> dict:
+    with db() as conn:
+        values = {row["key"]: row["value"] for row in conn.execute("select key, value from settings").fetchall()}
+    settings = {**DEFAULT_SETTINGS, **values}
+    avatar = DATA_DIR / "avatar"
+    for path in DATA_DIR.glob("avatar.*"):
+        avatar = path
+        break
+    if avatar.exists() and avatar.is_file():
+        settings["avatarUrl"] = f"/api/settings/avatar?ts={int(avatar.stat().st_mtime)}"
+    else:
+        settings["avatarUrl"] = ""
+    return settings
+
+
+def update_settings(payload: dict) -> dict:
+    allowed = set(DEFAULT_SETTINGS)
+    with db() as conn:
+        for key, value in payload.items():
+            if key not in allowed:
+                continue
+            conn.execute(
+                """
+                insert into settings (key, value, updated_at) values (?, ?, ?)
+                on conflict(key) do update set value = excluded.value, updated_at = excluded.updated_at
+                """,
+                (key, str(value), now_text()),
+            )
+    return read_settings()
+
+
+def save_avatar(handler: BaseHTTPRequestHandler) -> dict:
+    content_type = handler.headers.get("Content-Type", "")
+    if "multipart/form-data" not in content_type:
+        raise ValueError("请使用图片上传表单")
+    form = cgi.FieldStorage(
+        fp=handler.rfile,
+        headers=handler.headers,
+        environ={
+            "REQUEST_METHOD": "POST",
+            "CONTENT_TYPE": content_type,
+            "CONTENT_LENGTH": handler.headers.get("Content-Length", "0"),
+        },
+    )
+    field = form["avatar"] if "avatar" in form else None
+    if field is None or not getattr(field, "filename", ""):
+        raise ValueError("没有选择头像")
+    ext = Path(field.filename).suffix.lower()
+    if ext not in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
+        raise ValueError("头像仅支持 PNG、JPG、GIF、WebP")
+    DATA_DIR.mkdir(exist_ok=True)
+    for old in DATA_DIR.glob("avatar.*"):
+        old.unlink()
+    target = DATA_DIR / f"avatar{ext}"
+    with target.open("wb") as f:
+        shutil.copyfileobj(field.file, f)
+    return read_settings()
 
 
 def seed_tasks() -> None:
@@ -477,6 +578,7 @@ def bootstrap() -> None:
     seed_professors_from_letters()
     cleanup_generated_records()
     normalize_existing_materials()
+    normalize_program_results()
     seed_professor_profiles()
     seed_tasks()
     seed_questions()
@@ -734,7 +836,7 @@ def summary() -> dict:
         contacted = conn.execute(
             """
             select count(*) as n from professors
-            where status in ('已发送', '已回复', '约面试', '无回复')
+            where status in ('已发送', '养鱼', '已回复', '约面试', '面试通过', '无回复', '默拒', '拒绝')
             """
         ).fetchone()["n"]
         camp_applied = conn.execute(
@@ -807,6 +909,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/options":
                 send_json(self, app_options())
                 return
+            if path == "/api/settings":
+                send_json(self, read_settings())
+                return
+            if path == "/api/settings/avatar":
+                self.serve_avatar()
+                return
             match = re.fullmatch(r"/api/(materials|programs|professors|tasks|questions)", path)
             if match:
                 send_json(self, list_table(match.group(1), query))
@@ -832,6 +940,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/backup":
                 send_json(self, backup_db())
                 return
+            if path == "/api/settings/avatar":
+                send_json(self, save_avatar(self))
+                return
             if path == "/api/root/open":
                 self.open_path(SOURCE_DIR)
                 return
@@ -853,7 +964,14 @@ class Handler(BaseHTTPRequestHandler):
             send_json(self, {"error": str(exc)}, 500)
 
     def do_PATCH(self) -> None:
-        match = re.fullmatch(r"/api/(materials|programs|professors|tasks|questions)/(\d+)", urllib.parse.urlparse(self.path).path)
+        parsed_path = urllib.parse.urlparse(self.path).path
+        if parsed_path == "/api/settings":
+            try:
+                send_json(self, update_settings(read_body(self)))
+            except Exception as exc:
+                send_json(self, {"error": str(exc)}, 500)
+            return
+        match = re.fullmatch(r"/api/(materials|programs|professors|tasks|questions)/(\d+)", parsed_path)
         if not match:
             send_json(self, {"error": "Not found"}, 404)
             return
@@ -912,6 +1030,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         with path.open("rb") as f:
             shutil.copyfileobj(f, self.wfile)
+
+    def serve_avatar(self) -> None:
+        avatar = None
+        for path in DATA_DIR.glob("avatar.*"):
+            avatar = path
+            break
+        if avatar is None or not avatar.exists():
+            send_json(self, {"error": "头像不存在"}, 404)
+            return
+        content_type = mimetypes.guess_type(avatar.name)[0] or "image/png"
+        body = avatar.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def open_material(self, row_id: int, folder: bool = False) -> None:
         row = get_material(row_id)

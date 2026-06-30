@@ -9,14 +9,15 @@
   <body>
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">推</div>
+        <div class="brand-mark" id="brandMark">推</div>
         <div>
-          <h1>推免准备</h1>
-          <p>本地私有工作台</p>
+          <h1 id="brandTitle">推免准备</h1>
+          <p id="workspaceName">本地私有工作台</p>
         </div>
       </div>
       <nav id="nav"></nav>
       <div class="sidebar-foot">
+        <button class="ghost" id="settingsBtn" title="调整工作台信息和风格">设置</button>
         <button class="ghost" id="scanBtn" title="重新扫描保研准备文件夹">扫描材料</button>
         <button class="ghost" id="backupBtn" title="备份当前数据库">备份数据</button>
       </div>
@@ -58,6 +59,51 @@
           <button value="cancel" class="icon-btn" title="关闭">×</button>
         </div>
         <div id="papersList" class="paper-dialog-body"></div>
+      </form>
+    </dialog>
+
+    <dialog id="settingsDialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-head">
+          <h3>设置</h3>
+          <button value="cancel" class="icon-btn" title="关闭">×</button>
+        </div>
+        <div class="form-grid">
+          <label class="field">
+            <span>名字</span>
+            <input name="brandTitle" />
+          </label>
+          <label class="field">
+            <span>工作台名</span>
+            <input name="workspaceName" />
+          </label>
+          <label class="field">
+            <span>头像文字</span>
+            <input name="avatarText" maxlength="2" />
+          </label>
+          <label class="field">
+            <span>上传头像</span>
+            <input id="avatarInput" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+          </label>
+          <label class="field full">
+            <span>首页横幅文字</span>
+            <textarea name="motto"></textarea>
+          </label>
+          <label class="field full">
+            <span>整体风格</span>
+            <select name="theme">
+              <option value="default">清爽青绿</option>
+              <option value="morandi">莫兰迪色系</option>
+              <option value="pink">粉红泡沫</option>
+              <option value="forest">松林薄雾</option>
+              <option value="paper">暖纸书桌</option>
+            </select>
+          </label>
+        </div>
+        <menu>
+          <button value="cancel" class="secondary">取消</button>
+          <button id="saveSettingsBtn" value="default" class="primary">保存</button>
+        </menu>
       </form>
     </dialog>
 

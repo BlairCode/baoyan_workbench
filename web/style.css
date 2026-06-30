@@ -11,12 +11,91 @@
   --warning: #b86b24;
   --danger: #b84444;
   --shadow: 0 14px 34px rgba(27, 43, 55, 0.08);
+  --sidebar-bg: #172126;
+  --sidebar-text: #eef5f4;
+  --sidebar-muted: #aab8bd;
+  --nav-active: rgba(255, 255, 255, 0.1);
+  --brand-bg: #35a39a;
+  --banner-bg: linear-gradient(135deg, #e8f6f3, #fff);
+  --banner-text: #17655f;
   font-family:
     "Microsoft YaHei UI",
     "Microsoft YaHei",
     "Segoe UI",
     system-ui,
     sans-serif;
+}
+
+body[data-theme="morandi"] {
+  --bg: #f4f1ed;
+  --panel: #fffdf9;
+  --panel-2: #ebe7df;
+  --text: #282623;
+  --muted: #7b746b;
+  --line: #ded7cc;
+  --accent: #8a9a8a;
+  --accent-2: #738ca0;
+  --sidebar-bg: #4b5149;
+  --sidebar-text: #fbfaf7;
+  --sidebar-muted: #d2ccc2;
+  --nav-active: rgba(255, 255, 255, 0.13);
+  --brand-bg: #a7aa91;
+  --banner-bg: linear-gradient(135deg, #ebe7df, #fffdf9);
+  --banner-text: #5d6657;
+}
+
+body[data-theme="pink"] {
+  --bg: #fff6f8;
+  --panel: #ffffff;
+  --panel-2: #fdebf1;
+  --text: #2b2026;
+  --muted: #806b74;
+  --line: #f0d9e2;
+  --accent: #d7658b;
+  --accent-2: #a16ab0;
+  --sidebar-bg: #31242b;
+  --sidebar-text: #fff7fa;
+  --sidebar-muted: #e7c7d2;
+  --nav-active: rgba(255, 255, 255, 0.12);
+  --brand-bg: #e982a5;
+  --banner-bg: linear-gradient(135deg, #ffe4ec, #fff);
+  --banner-text: #a43d63;
+}
+
+body[data-theme="forest"] {
+  --bg: #f3f7f4;
+  --panel: #ffffff;
+  --panel-2: #e7efe9;
+  --text: #18251e;
+  --muted: #637369;
+  --line: #d8e3dc;
+  --accent: #41785c;
+  --accent-2: #3d6f88;
+  --sidebar-bg: #14231b;
+  --sidebar-text: #f1f8f4;
+  --sidebar-muted: #b6c7be;
+  --nav-active: rgba(255, 255, 255, 0.1);
+  --brand-bg: #5f9f78;
+  --banner-bg: linear-gradient(135deg, #e4f1e8, #ffffff);
+  --banner-text: #2f6c4f;
+}
+
+body[data-theme="paper"] {
+  --bg: #faf6ef;
+  --panel: #fffdfa;
+  --panel-2: #f1eadf;
+  --text: #27231d;
+  --muted: #756c5f;
+  --line: #e5d9c8;
+  --accent: #a66f3f;
+  --accent-2: #6f7f9a;
+  --sidebar-bg: #2a2520;
+  --sidebar-text: #fff8ee;
+  --sidebar-muted: #d7c7b4;
+  --nav-active: rgba(255, 255, 255, 0.12);
+  --brand-bg: #c48b54;
+  --banner-bg: linear-gradient(135deg, #f4eadb, #fffdfa);
+  --banner-text: #86582e;
 }
 
 * {
@@ -52,8 +131,8 @@ button {
   flex-direction: column;
   gap: 22px;
   padding: 22px 16px;
-  background: #172126;
-  color: #eef5f4;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
 }
 
 .brand {
@@ -70,9 +149,16 @@ button {
   display: grid;
   place-items: center;
   border-radius: 8px;
-  background: #35a39a;
+  background: var(--brand-bg);
   color: #fff;
   font-weight: 800;
+  overflow: hidden;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .brand h1 {
@@ -83,7 +169,7 @@ button {
 
 .brand p {
   margin: 5px 0 0;
-  color: #aab8bd;
+  color: var(--sidebar-muted);
   font-size: 12px;
 }
 
@@ -107,7 +193,7 @@ nav {
 
 .nav-btn.active,
 .nav-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--nav-active);
   color: #ffffff;
 }
 
@@ -128,6 +214,10 @@ nav {
   margin-top: auto;
   display: grid;
   gap: 8px;
+}
+
+#settingsBtn {
+  margin-bottom: 4px;
 }
 
 .main {
@@ -251,6 +341,26 @@ select:focus {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
+}
+
+.motto-banner {
+  margin-top: 16px;
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  padding: 18px 22px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--banner-bg);
+  box-shadow: var(--shadow);
+}
+
+.motto-banner p {
+  margin: 0;
+  color: var(--banner-text);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.5;
 }
 
 .no-scroll {

@@ -51,7 +51,7 @@ const schemas = {
       { key: "direction", label: "研究方向", full: true },
       { key: "email", label: "邮箱" },
       { key: "homepage", label: "主页" },
-      { key: "status", label: "状态", options: ["未联系", "已准备套磁信", "已发送", "养鱼", "已回复", "约面试", "面试通过", "无回复", "默拒", "拒绝", "暂缓", "已归档"] },
+      { key: "status", label: "状态", options: ["未联系", "已准备套磁信", "已发送", "官回", "养鱼", "已回复", "约面试", "面试通过", "无回复", "默拒", "拒绝", "暂缓", "已归档"] },
       { key: "display_order", label: "排序", type: "number" },
       { key: "note", label: "备注", type: "textarea", full: true },
     ],
@@ -674,6 +674,13 @@ function openSettings() {
   dialog.showModal();
 }
 
+function normalizeMotto(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 28);
+}
+
 async function saveSettings(event) {
   event.preventDefault();
   const dialog = $("#settingsDialog");
@@ -681,7 +688,7 @@ async function saveSettings(event) {
     brandTitle: dialog.querySelector('[name="brandTitle"]').value.trim() || "推免准备",
     workspaceName: dialog.querySelector('[name="workspaceName"]').value.trim() || "本地私有工作台",
     avatarText: dialog.querySelector('[name="avatarText"]').value.trim() || "推",
-    motto: dialog.querySelector('[name="motto"]').value.trim() || "金鳞岂是池中物，一遇风云便化龙",
+    motto: normalizeMotto(dialog.querySelector('[name="motto"]').value) || "金鳞岂是池中物，一遇风云便化龙",
     theme: dialog.querySelector('[name="theme"]').value,
   };
   state.settings = await api("/api/settings", { method: "PATCH", body: JSON.stringify(payload) });

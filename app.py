@@ -492,6 +492,8 @@ def update_settings(payload: dict) -> dict:
         for key, value in payload.items():
             if key not in allowed:
                 continue
+            if key == "motto":
+                value = re.sub(r"\s+", " ", str(value)).strip()[:28] or DEFAULT_SETTINGS["motto"]
             conn.execute(
                 """
                 insert into settings (key, value, updated_at) values (?, ?, ?)
@@ -836,7 +838,7 @@ def summary() -> dict:
         contacted = conn.execute(
             """
             select count(*) as n from professors
-            where status in ('已发送', '养鱼', '已回复', '约面试', '面试通过', '无回复', '默拒', '拒绝')
+            where status in ('已发送', '官回', '养鱼', '已回复', '约面试', '面试通过', '无回复', '默拒', '拒绝')
             """
         ).fetchone()["n"]
         camp_applied = conn.execute(

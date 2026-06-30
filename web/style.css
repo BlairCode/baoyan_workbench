@@ -98,6 +98,132 @@ body[data-theme="paper"] {
   --banner-text: #86582e;
 }
 
+body[data-theme="aurora"] {
+  --bg: #f4f7ff;
+  --panel: #ffffff;
+  --panel-2: #edf1ff;
+  --text: #182036;
+  --muted: #64708d;
+  --line: #dce3f4;
+  --accent: #5b6ee1;
+  --accent-2: #1d9a9a;
+  --sidebar-bg: #1b2038;
+  --sidebar-text: #f5f7ff;
+  --sidebar-muted: #b9c2e0;
+  --nav-active: rgba(126, 146, 245, 0.18);
+  --brand-bg: #6677e8;
+  --banner-bg: linear-gradient(135deg, #e6ecff, #ecfffb);
+  --banner-text: #4353bd;
+}
+
+body[data-theme="matcha"] {
+  --bg: #f7f8ef;
+  --panel: #fffefa;
+  --panel-2: #eef2dc;
+  --text: #232719;
+  --muted: #69705b;
+  --line: #dde4c7;
+  --accent: #728b45;
+  --accent-2: #b0804c;
+  --sidebar-bg: #26311f;
+  --sidebar-text: #fbfff2;
+  --sidebar-muted: #c9d2b6;
+  --nav-active: rgba(255, 255, 255, 0.12);
+  --brand-bg: #89a857;
+  --banner-bg: linear-gradient(135deg, #edf4d8, #fffefa);
+  --banner-text: #617c36;
+}
+
+body[data-theme="sunset"] {
+  --bg: #fff7f2;
+  --panel: #ffffff;
+  --panel-2: #ffece2;
+  --text: #2a211e;
+  --muted: #806b63;
+  --line: #f2d8cd;
+  --accent: #d96f51;
+  --accent-2: #b55a88;
+  --sidebar-bg: #32201f;
+  --sidebar-text: #fff8f4;
+  --sidebar-muted: #e7c7bf;
+  --nav-active: rgba(255, 255, 255, 0.13);
+  --brand-bg: #ea8061;
+  --banner-bg: linear-gradient(135deg, #ffe2d4, #fff7f2);
+  --banner-text: #b6533f;
+}
+
+body[data-theme="ink"] {
+  --bg: #f5f7fa;
+  --panel: #ffffff;
+  --panel-2: #e9edf3;
+  --text: #172033;
+  --muted: #626c7c;
+  --line: #d8dee8;
+  --accent: #2f5f9f;
+  --accent-2: #6a7d95;
+  --sidebar-bg: #111827;
+  --sidebar-text: #f4f7fb;
+  --sidebar-muted: #aeb8c9;
+  --nav-active: rgba(255, 255, 255, 0.11);
+  --brand-bg: #3b6fb6;
+  --banner-bg: linear-gradient(135deg, #e8eef7, #ffffff);
+  --banner-text: #294f86;
+}
+
+body[data-theme="ugly90s"] {
+  --bg: #fff200;
+  --panel: #00ffff;
+  --panel-2: #ff9b00;
+  --text: #240024;
+  --muted: #6b006b;
+  --line: #ff00ff;
+  --accent: #ff00ff;
+  --accent-2: #0000ff;
+  --sidebar-bg: #000080;
+  --sidebar-text: #ffff00;
+  --sidebar-muted: #00ffff;
+  --nav-active: rgba(255, 0, 255, 0.45);
+  --brand-bg: #ff00ff;
+  --banner-bg: linear-gradient(135deg, #00ff00, #ffff00);
+  --banner-text: #0000ff;
+}
+
+body[data-theme="traffic"] {
+  --bg: #fffbd1;
+  --panel: #ffffff;
+  --panel-2: #ffef7a;
+  --text: #1c1600;
+  --muted: #786300;
+  --line: #e4002b;
+  --accent: #00843d;
+  --accent-2: #e4002b;
+  --sidebar-bg: #171400;
+  --sidebar-text: #fff06a;
+  --sidebar-muted: #ffb5b5;
+  --nav-active: rgba(228, 0, 43, 0.26);
+  --brand-bg: #e4002b;
+  --banner-bg: linear-gradient(135deg, #ffeb3b, #ff5a5f);
+  --banner-text: #004b23;
+}
+
+body[data-theme="neonMud"] {
+  --bg: #5b4b28;
+  --panel: #c7ff00;
+  --panel-2: #7a5cff;
+  --text: #241a08;
+  --muted: #5138a5;
+  --line: #ff6ec7;
+  --accent: #ff6ec7;
+  --accent-2: #00f5d4;
+  --sidebar-bg: #2d2111;
+  --sidebar-text: #c7ff00;
+  --sidebar-muted: #ffb6e6;
+  --nav-active: rgba(199, 255, 0, 0.22);
+  --brand-bg: #7a5cff;
+  --banner-bg: linear-gradient(135deg, #ff6ec7, #c7ff00);
+  --banner-text: #2d2111;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -348,6 +474,7 @@ select:focus {
   min-height: 74px;
   display: flex;
   align-items: center;
+  justify-content: center;
   padding: 18px 22px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -356,11 +483,16 @@ select:focus {
 }
 
 .motto-banner p {
+  width: 100%;
   margin: 0;
   color: var(--banner-text);
   font-size: 20px;
   font-weight: 800;
   line-height: 1.5;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .no-scroll {

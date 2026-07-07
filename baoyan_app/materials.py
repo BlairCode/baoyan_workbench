@@ -74,8 +74,13 @@ def classify_material(path: Path, names: list[str]) -> dict:
 
 
 def scan_materials() -> dict:
+    with connect() as conn:
+        sanitize_material_paths(conn)
+
     if not SOURCE_DIR.exists():
-        return {"inserted": 0, "updated": 0, "missing": 0}
+        with connect() as conn:
+            missing = conn.execute("select count(*) as n from materials where missing = 1").fetchone()["n"]
+        return {"inserted": 0, "updated": 0, "missing": missing}
 
     inserted = 0
     updated = 0
@@ -148,6 +153,15 @@ def scan_materials() -> dict:
                 inserted += 1
         missing = conn.execute("select count(*) as n from materials where missing = 1").fetchone()["n"]
     return {"inserted": inserted, "updated": updated, "missing": missing}
+
+
+def sanitize_material_paths(conn: sqlite3.Connection) -> None:
+    """Hide stale rows copied from another machine or an older project path."""
+    rows = conn.execute("select id, path from materials").fetchall()
+    for row in rows:
+        path = Path(row["path"])
+        if not is_safe_path(path) or not path.exists():
+            conn.execute("update materials set missing = 1, updated_at = ? where id = ?", (now_text(), row["id"]))
 
 
 def seed_professors_from_letters() -> None:

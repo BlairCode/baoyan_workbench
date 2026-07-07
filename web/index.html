@@ -77,9 +77,22 @@
             <span>工作台名</span>
             <input name="workspaceName" />
           </label>
+          <div class="avatar-setting full">
+            <label class="field">
+              <span>头像方式</span>
+              <div class="segmented compact">
+                <label><input type="radio" name="avatarMode" value="text" />文字</label>
+                <label><input type="radio" name="avatarMode" value="upload" />上传</label>
+              </div>
+            </label>
+            <div>
+              <span class="field-caption">头像预览</span>
+              <div class="avatar-preview" id="avatarPreview">推</div>
+            </div>
+          </div>
           <label class="field">
             <span>头像文字</span>
-            <input name="avatarText" maxlength="2" />
+            <input name="avatarText" maxlength="2" placeholder="可为空" />
           </label>
           <label class="field">
             <span>上传头像</span>
@@ -87,7 +100,7 @@
           </label>
           <label class="field full">
             <span>首页横幅文字</span>
-            <input name="motto" maxlength="28" placeholder="最多 28 字，单行显示" />
+            <input name="motto" maxlength="42" placeholder="可为空" />
           </label>
           <label class="field full">
             <span>整体风格</span>
@@ -107,6 +120,11 @@
             </select>
           </label>
         </div>
+        <div class="settings-meta">
+          <a href="https://github.com/BlairCode/baoyan_workbench" target="_blank" rel="noreferrer">GitHub: BlairCode/baoyan_workbench</a>
+          <span>Email: zhanghoubing777@gmail.com</span>
+          <span>本网站为开源项目，仅供学习与交流使用，使用风险由用户自行承担。</span>
+        </div>
         <menu>
           <button value="cancel" class="secondary">取消</button>
           <button id="saveSettingsBtn" value="default" class="primary">保存</button>
@@ -114,6 +132,6 @@
       </form>
     </dialog>
 
-    <script src="/app.js"></script>
+    <script type="module" src="/js/main.js"></script>
   </body>
 </html>

@@ -21,6 +21,6 @@ DEFAULT_SETTINGS = {
     "avatarMode": "text",
     "motto": "金鳞岂是池中物，一遇风云便化龙",
     "theme": "default",
+    "schoolColors": "{}",
     "github": "https://github.com/BlairCode/baoyan_workbench",
-    "email": "zhanghoubing777@Gmail.com",
 }

@@ -5,6 +5,8 @@ import mimetypes
 import os
 import shutil
 import sys
+import threading
+import time
 import urllib.parse
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -14,8 +16,8 @@ from .analytics import summary
 from .bootstrap import bootstrap
 from .config import HOST, PORT, SOURCE_DIR, WEB_DIR
 from .contact import contact_workspace
-from .materials import delete_material_file, get_material, resource_groups, scan_materials, upload_material
-from .repositories import app_options, backup_db, create_row, delete_row, list_table, move_program, update_row
+from .materials import cleanup_generated_records, delete_material_file, get_material, resource_directory, resource_groups, scan_materials, seed_professors_from_letters, upload_material
+from .repositories import app_options, backup_db, create_row, delete_row, list_table, move_professor, move_program, update_row
 from .settings import avatar_response, read_settings, save_avatar, update_settings
 from .utils import is_safe_path, now_text
 
@@ -40,7 +42,16 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "BaoyanDesk/1.2"
 
     def log_message(self, fmt: str, *args) -> None:
-        sys.stderr.write("[%s] %s\n" % (now_text(), fmt % args))
+        status = int(args[1]) if len(args) > 1 and str(args[1]).isdigit() else 0
+        if not self.path.startswith("/api/") and status < 400:
+            return
+        elapsed_ms = int((time.perf_counter() - getattr(self, "_request_started", time.perf_counter())) * 1000)
+        label = "成功" if status < 400 else "失败"
+        sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] {self.command:<6} {self.path.split('?', 1)[0]}  {status} {label}  {elapsed_ms}ms\n")
+
+    def handle_one_request(self) -> None:
+        self._request_started = time.perf_counter()
+        super().handle_one_request()
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
@@ -53,6 +64,11 @@ class Handler(BaseHTTPRequestHandler):
                 return send_json(self, contact_workspace())
             if path == "/api/materials/groups":
                 return send_json(self, resource_groups())
+            if path == "/api/resources":
+                relative_path = (query.get("path") or [""])[0]
+                search = (query.get("q") or [""])[0]
+                limit = (query.get("limit") or ["200"])[0]
+                return send_json(self, resource_directory(relative_path, search, int(limit) if str(limit).isdigit() else 200))
             if path == "/api/options":
                 return send_json(self, app_options())
             if path == "/api/settings":
@@ -87,7 +103,13 @@ class Handler(BaseHTTPRequestHandler):
             match = re.fullmatch(r"/api/programs/(\d+)/move", path)
             if match:
                 payload = read_body(self)
-                return send_json(self, move_program(int(match.group(1)), int(payload.get("direction", 0))))
+                target_position = payload.get("target_position")
+                return send_json(self, move_program(int(match.group(1)), int(payload.get("direction", 0)), int(target_position) if target_position else None))
+            match = re.fullmatch(r"/api/professors/(\d+)/move", path)
+            if match:
+                payload = read_body(self)
+                target_position = payload.get("target_position")
+                return send_json(self, move_professor(int(match.group(1)), int(payload.get("direction", 0)), int(target_position) if target_position else None))
             match = re.fullmatch(r"/api/materials/(\d+)/(open|open-folder)", path)
             if match:
                 return self.open_material(int(match.group(1)), folder=match.group(2) == "open-folder")
@@ -183,6 +205,31 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     bootstrap()
-    print(f"推免准备系统已启动：http://{HOST}:{PORT}")
-    print(f"资料目录：{SOURCE_DIR}")
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    print("=" * 52)
+    print(f"  推免准备系统  http://{HOST}:{PORT}")
+    print(f"  资料目录      {SOURCE_DIR}")
+    print("  状态          已就绪（资料将在后台同步）")
+    print("=" * 52)
+    threading.Thread(target=background_material_sync, name="material-sync", daemon=True).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n[系统] 已停止")
+    finally:
+        server.server_close()
+
+
+def background_material_sync() -> None:
+    started = time.perf_counter()
+    try:
+        cleanup_generated_records()
+        result = scan_materials()
+        seed_professors_from_letters()
+        elapsed = time.perf_counter() - started
+        print(
+            f"[同步] 完成  新增 {result['inserted']} · 更新 {result['updated']} · "
+            f"清理 {result.get('purged', 0)} · 缺失 {result['missing']}  ({elapsed:.1f}s)"
+        )
+    except Exception as exc:
+        print(f"[同步] 失败  {exc}", file=sys.stderr)

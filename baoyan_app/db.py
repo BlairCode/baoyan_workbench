@@ -43,7 +43,10 @@ def init_db() -> None:
                 school text not null,
                 abbreviation text not null default '',
                 college text not null default '',
-                stage text not null default '夏令营',
+                major text not null default '',
+                program_type text not null default '',
+                direction text not null default '',
+                stage text not null default '准备',
                 date_text text not null default '',
                 account text not null default '',
                 password text not null default '',
@@ -104,12 +107,16 @@ def init_db() -> None:
         ensure_column(conn, "materials", "related_program", "text not null default ''")
         ensure_column(conn, "materials", "missing", "integer not null default 0")
         ensure_column(conn, "professors", "display_order", "integer not null default 0")
+        ensure_column(conn, "programs", "major", "text not null default ''")
+        ensure_column(conn, "programs", "program_type", "text not null default ''")
+        ensure_column(conn, "programs", "direction", "text not null default ''")
         ensure_column(conn, "programs", "display_order", "integer not null default 0")
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute(
                 "insert or ignore into settings (key, value, updated_at) values (?, ?, ?)",
                 (key, value, now_text()),
             )
+        conn.execute("delete from settings where key = 'email'")
 
 
 def seed_tasks() -> None:

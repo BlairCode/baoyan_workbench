@@ -4,60 +4,84 @@ import { state } from "../state.js";
 import { escapeHtml } from "../utils.js";
 
 export async function renderResources(bindCommonActions, scanMaterials) {
-  const data = await api("/api/materials/groups");
-  const q = state.q.toLowerCase();
-  const groups = data.byFolder
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) =>
-        [item.name, item.relative_path, item.category, item.resource_kind, item.related_professor, item.related_program, item.note].join(" ").toLowerCase().includes(q),
-      ),
-    }))
-    .filter((group) => !q || group.items.length);
+  const query = state.q.trim();
+  const params = query
+    ? `q=${encodeURIComponent(query)}&limit=200`
+    : `path=${encodeURIComponent(state.resourcePath || "")}`;
+  const data = await api(`/api/resources?${params}`);
   document.querySelector("#app").innerHTML = `
     <section class="panel">
       <div class="panel-head">
-        <h3>资源浏览</h3>
+        <div>
+          <h3>资源浏览</h3>
+          <p class="panel-subtitle">${data.mode === "search" ? `搜索“${escapeHtml(data.query)}”` : "按需加载当前目录，进入文件夹后才读取下一级"}</p>
+        </div>
         <div class="actions">
-          <button class="secondary" id="expandFoldersBtn">全部展开</button>
-          <button class="secondary" id="collapseFoldersBtn">全部折叠</button>
           <label class="primary upload-label">添加文件<input id="uploadInput" type="file" hidden /></label>
           <button class="secondary" id="scanInlineBtn">同步文件</button>
         </div>
       </div>
-      <div class="panel-body resource-groups">${groups.map(renderResourceGroup).join("") || `<div class="empty">没有匹配的文件。</div>`}</div>
+      <div class="panel-body resource-browser">
+        ${data.mode === "search" ? renderSearchResults(data) : renderDirectory(data)}
+      </div>
     </section>
   `;
   document.querySelector("#scanInlineBtn").addEventListener("click", scanMaterials);
   document.querySelector("#uploadInput").addEventListener("change", uploadFile);
-  document.querySelector("#expandFoldersBtn").addEventListener("click", () => setFoldersOpen(true));
-  document.querySelector("#collapseFoldersBtn").addEventListener("click", () => setFoldersOpen(false));
+  document.querySelectorAll("[data-resource-path]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.resourcePath = button.dataset.resourcePath || "";
+      renderResources(bindCommonActions, scanMaterials).catch(showPageError);
+    });
+  });
+  document.querySelector("[data-clear-resource-search]")?.addEventListener("click", () => {
+    state.q = "";
+    document.querySelector("#searchInput").value = "";
+    renderResources(bindCommonActions, scanMaterials).catch(showPageError);
+  });
   bindCommonActions();
 }
 
-function renderResourceGroup(group) {
-  const nested = group.items.map((item) => ({ ...item, _depth: depthInGroup(group.name, item.relative_path) }));
+function renderDirectory(data) {
+  const folders = data.directories
+    .map(
+      (folder) => `
+        <article class="resource-folder-card">
+          <button class="resource-folder-main" data-resource-path="${escapeHtml(folder.relativePath)}">
+            <span class="resource-folder-icon" aria-hidden="true"></span>
+            <span><strong>${escapeHtml(folder.name)}</strong><small>${folder.childCount} 个直接子项</small></span>
+          </button>
+          <button class="mini" data-open-folder-path="${escapeHtml(folder.path)}">本机打开</button>
+        </article>
+      `,
+    )
+    .join("");
+  const isEmpty = !data.directories.length && !data.files.length;
   return `
-    <details class="folder">
-      <summary>
-        <span>${escapeHtml(group.name)}</span>
-        <span class="folder-summary-actions"><strong>${group.items.length}</strong><button class="mini" data-open-folder-path="${escapeHtml(group.path)}">打开文件夹</button></span>
-      </summary>
-      <div class="folder-body">${renderFileList(nested, { nested: true, indent: 1 })}</div>
-    </details>
+    <nav class="resource-breadcrumbs" aria-label="资源路径">
+      ${data.breadcrumbs
+        .map((item, index) => `<button data-resource-path="${escapeHtml(item.relativePath)}" ${index === data.breadcrumbs.length - 1 ? "disabled" : ""}>${escapeHtml(item.name)}</button>`)
+        .join("<span>/</span>")}
+      <button class="mini resource-open-current" data-open-folder-path="${escapeHtml(data.path)}">打开当前文件夹</button>
+    </nav>
+    ${folders ? `<div class="resource-folder-grid">${folders}</div>` : ""}
+    ${data.files.length ? `<div class="resource-current-files"><h4>当前层文件 <span>${data.files.length}</span></h4>${renderFileList(data.files)}</div>` : ""}
+    ${isEmpty ? `<div class="empty">当前文件夹为空。</div>` : ""}
   `;
 }
 
-function depthInGroup(group, relativePath) {
-  const rel = String(relativePath || "");
-  const parts = rel.replace(group, "").split(/[\\/]/).filter(Boolean);
-  return Math.max(1, parts.length);
+function renderSearchResults(data) {
+  return `
+    <div class="resource-search-summary">
+      <span>找到 ${data.items.length} 个文件${data.truncated ? "，仅显示前 200 个" : ""}</span>
+      <button class="secondary" data-clear-resource-search>返回目录</button>
+    </div>
+    ${renderFileList(data.items)}
+  `;
 }
 
-function setFoldersOpen(open) {
-  document.querySelectorAll(".folder").forEach((folder) => {
-    folder.open = open;
-  });
+function showPageError(error) {
+  window.dispatchEvent(new CustomEvent("app-toast", { detail: error.message }));
 }
 
 async function uploadFile(event) {

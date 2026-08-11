@@ -3,6 +3,7 @@ import { fileButtons, fileIcon, renderFileList } from "./files.js";
 import { schemas } from "./schemas.js";
 import { pages, state } from "./state.js";
 import { $, escapeHtml, shortText } from "./utils.js";
+import { statusStyle } from "./status-colors.js";
 
 export function toast(message) {
   const el = $("#toast");
@@ -49,7 +50,7 @@ export function renderNav(setPage) {
 }
 
 export function renderBadge(value, extra = "") {
-  return `<span class="badge ${extra}">${escapeHtml(value || "未填写")}</span>`;
+  return `<span class="badge ${extra}" style="${statusStyle(value)}">${escapeHtml(value || "未填写")}</span>`;
 }
 
 export function renderSimpleList(rows, titleKey, subKey, metaKey) {
@@ -132,6 +133,7 @@ export async function openEditor(page, row = null, refresh) {
   const dialog = $("#editor");
   $("#editorTitle").textContent = row ? `编辑${schema.title}` : `新增${schema.title}`;
   $("#editorFields").innerHTML = schema.fields.map((field) => renderField(field, row, options)).join("");
+  renderEditorOrderActions(page, row, dialog, refresh);
   $("#saveBtn").onclick = async (event) => {
     event.preventDefault();
     const payload = collectForm(schema);
@@ -146,6 +148,28 @@ export async function openEditor(page, row = null, refresh) {
     refresh();
   };
   dialog.showModal();
+}
+
+function renderEditorOrderActions(page, row, dialog, refresh) {
+  const actions = $("#editorOrderActions");
+  const orderEndpoints = { professors: "professors", programs: "programs" };
+  if (!row?.id || !orderEndpoints[page]) {
+    actions.innerHTML = "";
+    return;
+  }
+  actions.innerHTML = `
+    <button type="button" class="secondary" data-editor-move="top">移至顶端</button>
+    <button type="button" class="secondary" data-editor-move="bottom">移至底端</button>
+  `;
+  actions.querySelector('[data-editor-move="top"]').onclick = () => moveEditorRow(page, row.id, 1, dialog, refresh);
+  actions.querySelector('[data-editor-move="bottom"]').onclick = () => moveEditorRow(page, row.id, 1000000, dialog, refresh);
+}
+
+async function moveEditorRow(page, id, targetPosition, dialog, refresh) {
+  await api(`/api/${page}/${id}/move`, { method: "POST", body: JSON.stringify({ target_position: targetPosition }) });
+  dialog.close();
+  toast(targetPosition === 1 ? "已移至顶端" : "已移至底端");
+  refresh();
 }
 
 function renderField(field, row, options) {

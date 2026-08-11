@@ -4,6 +4,7 @@ export const state = {
   rows: {},
   contactData: null,
   resourceMode: "folder",
+  resourcePath: "",
   options: null,
   settings: null,
 };

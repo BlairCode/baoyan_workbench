@@ -4,27 +4,50 @@ import { state } from "../state.js";
 import { escapeHtml } from "../utils.js";
 import { openEditor, openPapersDialog, renderBadge, toast } from "../ui.js";
 
+const programFilters = {
+  status: "",
+};
+
 export async function renderTablePage(page, bindCommonActions, refresh) {
   const schema = schemas[page];
   const data = await api(`${schema.endpoint}${state.q ? `?q=${encodeURIComponent(state.q)}` : ""}`);
-  state.rows[page] = data.items;
+  const allItems = data.items;
+  const items = page === "programs" ? allItems.filter((row) => !programFilters.status || row.status === programFilters.status) : allItems;
+  state.rows[page] = items;
   document.querySelector("#app").innerHTML = `
     <section class="panel">
       <div class="panel-head"><h3>${schema.title}</h3><button class="primary" id="addBtn">新增</button></div>
       <div class="panel-body">
-        <div class="toolbar"><p>${data.items.length} 条记录</p></div>
-        ${renderTable(page, data.items)}
+        ${page === "programs" ? renderProgramFilters(allItems, items.length) : `<div class="toolbar"><p>${items.length} 条记录</p></div>`}
+        ${renderTable(page, items)}
       </div>
     </section>
   `;
   document.querySelector("#addBtn").addEventListener("click", () => openEditor(page, null, refresh));
+  bindProgramFilters(page, refresh);
   bindTableActions(page, refresh);
   bindCommonActions();
+}
+
+function renderProgramFilters(rows, visibleCount) {
+  const statuses = uniqueValues(rows.map((row) => row.status || "未填写"));
+  return `
+    <div class="toolbar program-filters">
+      <p>${visibleCount} / ${rows.length} 条记录</p>
+      <div class="filter-controls">
+        <select class="mini-select" data-program-filter="status">
+          <option value="">全部状态</option>
+          ${statuses.map((status) => `<option value="${escapeHtml(status)}" ${programFilters.status === status ? "selected" : ""}>${escapeHtml(status)}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+  `;
 }
 
 function renderTable(page, rows) {
   const schema = schemas[page];
   if (!rows.length) return `<div class="empty">暂无记录。</div>`;
+  if (page === "programs") return renderPrograms(rows);
   return `
     <div class="table-wrap">
       <table>
@@ -46,9 +69,55 @@ function renderTable(page, rows) {
   `;
 }
 
+function renderPrograms(rows) {
+  return `
+    <div class="program-list">
+      ${rows
+        .map(
+          (row, index) => `
+            <article class="program-row">
+              <span class="program-index">${index + 1}</span>
+              <strong class="program-school" title="${escapeHtml(row.school || "")}">${escapeHtml(row.school || "未填写学校")}</strong>
+              <div class="program-main">
+                <span title="${escapeHtml(programMeta(row))}">${escapeHtml(programMeta(row))}</span>
+              </div>
+              <span class="program-progress" title="${escapeHtml(programProgress(row))}">${escapeHtml(programProgress(row))}</span>
+              ${renderBadge(row.status)}
+              <p class="program-note-line" title="${escapeHtml(row.note || "")}">${escapeHtml(row.note || "")}</p>
+              <div class="actions program-actions">${programActions("programs", row)}<button class="mini" data-action="edit" data-page="programs" data-id="${row.id}">编辑</button><button class="mini danger" data-action="delete" data-page="programs" data-id="${row.id}">删除</button></div>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function programActions(page, row) {
   if (page !== "programs") return "";
-  return `<button class="mini" data-move-program="${row.id}" data-dir="-1">↑</button><button class="mini" data-move-program="${row.id}" data-dir="1">↓</button><button class="mini" data-show-program-files="${escapeHtml(row.school)}">相关文件</button>`;
+  return `<button class="mini" data-move-program="${row.id}" data-dir="-1">↑</button><button class="mini" data-move-program="${row.id}" data-dir="1">↓</button><button class="mini" data-show-program-files="${escapeHtml(row.school)}">文件</button>`;
+}
+
+function uniqueValues(values) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+}
+
+function programMeta(row) {
+  return compactLine([row.college, row.major, row.program_type]);
+}
+
+function compactLine(parts) {
+  const text = parts.filter(Boolean).join(" · ");
+  return text || "学院/专业/类型待补充";
+}
+
+function programProgress(row) {
+  return compactLine([row.stage, row.date_text, row.direction ? `方向: ${shortValue(row.direction, 10)}` : ""]);
+}
+
+function shortValue(value, max = 8) {
+  const text = String(value || "").trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 function formatCell(key, row) {
@@ -78,6 +147,16 @@ function bindTableActions(page, refresh) {
   document.querySelectorAll("[data-move-program]").forEach((button) => {
     button.addEventListener("click", async () => {
       await api(`/api/programs/${button.dataset.moveProgram}/move`, { method: "POST", body: JSON.stringify({ direction: Number(button.dataset.dir) }) });
+      refresh();
+    });
+  });
+}
+
+function bindProgramFilters(page, refresh) {
+  if (page !== "programs") return;
+  document.querySelectorAll("[data-program-filter]").forEach((select) => {
+    select.addEventListener("change", () => {
+      programFilters[select.dataset.programFilter] = select.value;
       refresh();
     });
   });

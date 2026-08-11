@@ -8,6 +8,7 @@ from .db import connect
 from .taxonomy import (
     PROGRAM_STAGES,
     PROGRAM_STATUSES,
+    PROGRAM_TYPES,
     PROFESSOR_STATUSES,
     QUESTION_TOPICS,
     RESOURCE_CATEGORIES,
@@ -24,17 +25,9 @@ TABLES = {
         "order": "missing asc, pinned desc, category asc, folder asc, mtime desc, id desc",
     },
     "programs": {
-        "columns": ["school", "abbreviation", "college", "stage", "date_text", "account", "password", "status", "result", "note", "display_order"],
-        "search": ["school", "abbreviation", "college", "stage", "status", "result", "note"],
-        "order": """
-            case status
-              when '优营' then 10 when '通过' then 20 when '已入营' then 30
-              when '已参营' then 40 when '候补' then 50 when '已报名' then 60
-              when '准备材料' then 80 when '关注中' then 90
-              when '已放弃' then 100 when '未入营' then 110 when '未通过' then 120
-              else 95 end,
-            display_order asc, id desc
-        """,
+        "columns": ["school", "abbreviation", "college", "major", "program_type", "direction", "stage", "date_text", "account", "password", "status", "result", "note", "display_order"],
+        "search": ["school", "abbreviation", "college", "major", "program_type", "direction", "stage", "date_text", "account", "status", "result", "note"],
+        "order": "display_order asc, id desc",
     },
     "professors": {
         "columns": ["name", "school", "college", "direction", "email", "homepage", "status", "note", "display_order"],
@@ -62,13 +55,27 @@ def list_table(table: str, query: dict) -> dict:
     if q:
         where = " where " + " or ".join([f"{col} like ?" for col in meta["search"]])
         params = [f"%{q}%"] * len(meta["search"])
+    raw_limit = (query.get("limit") or [""])[0]
+    limit = max(1, min(int(raw_limit), 500)) if str(raw_limit).isdigit() else None
+    limit_sql = " limit ?" if limit else ""
+    if limit:
+        params.append(limit)
     with connect() as conn:
-        rows = conn.execute(f"select * from {table}{where} order by {meta['order']}", params).fetchall()
+        if table == "programs":
+            resequence_table(conn, "programs")
+        if table == "professors":
+            resequence_table(conn, "professors", "status != '已归档'")
+        rows = conn.execute(f"select * from {table}{where} order by {meta['order']}{limit_sql}", params).fetchall()
     return {"items": rows_to_dicts(rows)}
 
 
 def create_row(table: str, payload: dict) -> dict:
     meta = TABLES[table]
+    if table in {"programs", "professors"} and not payload.get("display_order"):
+        with connect() as conn:
+            where = " where status != '已归档'" if table == "professors" else ""
+            max_order = conn.execute(f"select coalesce(max(display_order), 0) as n from {table}{where}").fetchone()["n"]
+        payload["display_order"] = int(max_order or 0) + 1
     cols = [col for col in meta["columns"] if col in payload]
     if not cols:
         raise ValueError("没有可保存的字段")
@@ -105,35 +112,62 @@ def delete_row(table: str, row_id: int) -> dict:
     return {"ok": True}
 
 
-def move_program(row_id: int, direction: int) -> dict:
+def move_program(row_id: int, direction: int = 0, target_position: int | None = None) -> dict:
+    return move_ordered_row("programs", row_id, direction, "院校记录不存在", target_position=target_position)
+
+
+def move_professor(row_id: int, direction: int = 0, target_position: int | None = None) -> dict:
+    return move_ordered_row("professors", row_id, direction, "导师记录不存在", "status != '已归档'", target_position=target_position)
+
+
+def move_ordered_row(table: str, row_id: int, direction: int, missing_message: str, where: str = "", target_position: int | None = None) -> dict:
     with connect() as conn:
-        current = conn.execute("select * from programs where id = ?", (row_id,)).fetchone()
+        resequence_table(conn, table, where)
+        current_where = f"id = ?{f' and {where}' if where else ''}"
+        current = conn.execute(f"select * from {table} where {current_where}", (row_id,)).fetchone()
         if current is None:
-            raise KeyError("院校记录不存在")
+            raise KeyError(missing_message)
+        if target_position is not None:
+            return move_row_to_position(conn, table, current["id"], int(target_position), where)
         op = ">" if direction > 0 else "<"
         order = "asc" if direction > 0 else "desc"
+        target_where = f"display_order {op} ?{f' and {where}' if where else ''}"
         target = conn.execute(
             f"""
-            select * from programs
-            where status = ? and display_order {op} ?
+            select * from {table}
+            where {target_where}
             order by display_order {order}, id {order}
             limit 1
             """,
-            (current["status"], current["display_order"]),
+            (current["display_order"],),
         ).fetchone()
         if target is None:
             return {"ok": True, "moved": False}
-        conn.execute("update programs set display_order = ?, updated_at = ? where id = ?", (target["display_order"], now_text(), current["id"]))
-        conn.execute("update programs set display_order = ?, updated_at = ? where id = ?", (current["display_order"], now_text(), target["id"]))
+        conn.execute(f"update {table} set display_order = ?, updated_at = ? where id = ?", (target["display_order"], now_text(), current["id"]))
+        conn.execute(f"update {table} set display_order = ?, updated_at = ? where id = ?", (current["display_order"], now_text(), target["id"]))
+    return {"ok": True, "moved": True}
+
+
+def move_row_to_position(conn, table: str, row_id: int, target_position: int, where: str = "") -> dict:
+    where_sql = f" where {where}" if where else ""
+    rows = conn.execute(f"select id from {table}{where_sql} order by display_order asc, id asc").fetchall()
+    ids = [row["id"] for row in rows]
+    if row_id not in ids:
+        return {"ok": True, "moved": False}
+    target_index = max(0, min(int(target_position) - 1, len(ids) - 1))
+    ids.remove(row_id)
+    ids.insert(target_index, row_id)
+    for index, item_id in enumerate(ids, start=1):
+        conn.execute(f"update {table} set display_order = ?, updated_at = ? where id = ?", (index, now_text(), item_id))
     return {"ok": True, "moved": True}
 
 
 def normalize_program_results() -> None:
     result_to_status = {
-        "入营": "已入营",
+        "入营": "入营",
         "优营": "优营",
-        "候补": "候补",
-        "未入营": "未入营",
+        "候补": "通过",
+        "未入营": "未通过",
         "通过": "通过",
         "未通过": "未通过",
     }
@@ -143,17 +177,34 @@ def normalize_program_results() -> None:
             result = row["result"]
             new_status = row["status"] if result in {"待定", row["status"]} else result_to_status.get(result, result)
             conn.execute("update programs set status = ?, result = '', updated_at = ? where id = ?", (new_status, now_text(), row["id"]))
-        legacy_status = {"材料待补": "准备材料", "已结束": "已放弃", "结束": "已放弃"}
+        legacy_status = {
+            "材料待补": "填报中",
+            "准备材料": "填报中",
+            "已报名": "报名",
+            "已入营": "入营",
+            "已参营": "参营",
+            "候补": "通过",
+            "未入营": "未通过",
+            "已放弃": "放弃报名",
+            "已结束": "放弃报名",
+            "结束": "放弃报名",
+        }
         for old, new in legacy_status.items():
             conn.execute("update programs set status = ?, updated_at = ? where status = ?", (new, now_text(), old))
 
 
 def ensure_program_display_order() -> None:
     with connect() as conn:
-        rows = conn.execute("select id, display_order from programs order by display_order asc, id asc").fetchall()
-        for index, row in enumerate(rows, start=10):
-            if not row["display_order"]:
-                conn.execute("update programs set display_order = ? where id = ?", (index * 10, row["id"]))
+        resequence_table(conn, "programs")
+        resequence_table(conn, "professors", "status != '已归档'")
+
+
+def resequence_table(conn, table: str, where: str = "") -> None:
+    where_sql = f" where {where}" if where else ""
+    rows = conn.execute(f"select id, display_order from {table}{where_sql} order by display_order asc, id asc").fetchall()
+    for index, row in enumerate(rows, start=1):
+        if row["display_order"] != index:
+            conn.execute(f"update {table} set display_order = ? where id = ?", (index, row["id"]))
 
 
 def app_options() -> dict:
@@ -171,6 +222,7 @@ def app_options() -> dict:
         "categories": RESOURCE_CATEGORIES,
         "programStages": PROGRAM_STAGES,
         "programStatuses": PROGRAM_STATUSES,
+        "programTypes": PROGRAM_TYPES,
         "professorStatuses": PROFESSOR_STATUSES,
         "taskPriorities": TASK_PRIORITIES,
         "taskStatuses": TASK_STATUSES,

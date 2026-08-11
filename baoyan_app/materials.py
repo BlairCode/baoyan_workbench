@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import cgi
+import os
 import re
 import shutil
 import sqlite3
@@ -13,13 +14,46 @@ from .taxonomy import default_stage_for_category, normalize_category
 from .utils import folder_level, is_safe_path, now_text, relative_text, rows_to_dicts
 
 
+IGNORED_DIRECTORY_NAMES = {
+    ".agents",
+    ".cache",
+    ".codex",
+    ".git",
+    ".next",
+    ".nuxt",
+    ".pnpm-store",
+    ".pytest_cache",
+    ".turbo",
+    ".venv",
+    ".wrangler",
+    "__pycache__",
+    "node_modules",
+    "venv",
+}
+IGNORED_FILE_SUFFIXES = {".tmp", ".crdownload", ".part"}
+
+
+def is_ignored_material_path(path: Path) -> bool:
+    try:
+        relative_parts = path.relative_to(SOURCE_DIR).parts
+    except ValueError:
+        return True
+    return any(part.lower() in IGNORED_DIRECTORY_NAMES for part in relative_parts)
+
+
+def purge_ignored_material_rows(conn: sqlite3.Connection) -> int:
+    rows = conn.execute("select id, path from materials").fetchall()
+    ignored_ids = [(row["id"],) for row in rows if is_ignored_material_path(Path(row["path"]))]
+    if ignored_ids:
+        conn.executemany("delete from materials where id = ?", ignored_ids)
+    return len(ignored_ids)
+
+
 def clean_professor_name(value: str) -> str:
     name = Path(value).stem
-    for prefix in ["套磁信", "套磁信_"]:
-        if name.startswith(prefix):
-            name = name[len(prefix) :]
+    name = re.sub(r"^套磁信[\s\-_—－]*", "", name)
     name = re.sub(r"^[A-Za-z]{2,10}[-_]", "", name)
-    return name.strip()
+    return name.strip(" \t\r\n-_—－")
 
 
 def known_professor_names(conn: sqlite3.Connection) -> list[str]:
@@ -75,89 +109,92 @@ def classify_material(path: Path, names: list[str]) -> dict:
 
 def scan_materials() -> dict:
     with connect() as conn:
+        purged = purge_ignored_material_rows(conn)
         sanitize_material_paths(conn)
 
     if not SOURCE_DIR.exists():
         with connect() as conn:
             missing = conn.execute("select count(*) as n from materials where missing = 1").fetchone()["n"]
-        return {"inserted": 0, "updated": 0, "missing": missing}
+        return {"inserted": 0, "updated": 0, "missing": missing, "purged": purged}
 
     inserted = 0
     updated = 0
-    ignored_dirs = {"data", "web", "__pycache__", ".git", ".agents", ".codex"}
-
     with connect() as conn:
         names = known_professor_names(conn)
         conn.execute("update materials set missing = 1 where path like ?", (str(SOURCE_DIR) + "%",))
-        for path in SOURCE_DIR.rglob("*"):
-            if not path.is_file() or any(part in ignored_dirs for part in path.parts):
-                continue
-            if path.suffix.lower() in {".tmp", ".crdownload"}:
-                continue
-            stat = path.stat()
-            info = classify_material(path, names)
-            row = conn.execute("select * from materials where path = ?", (str(path),)).fetchone()
-            if row:
-                category = normalize_category(row["category"]) if row["category"] else info["category"]
-                stage = row["stage"] or default_stage_for_category(category)
-                related = row["related_professor"] or info["related_professor"]
-                conn.execute(
-                    """
-                    update materials
-                    set name = ?, category = ?, stage = ?, ext = ?, size = ?, mtime = ?,
-                        relative_path = ?, folder = ?, resource_kind = ?,
-                        related_professor = ?, missing = 0, updated_at = ?
-                    where path = ?
-                    """,
-                    (
-                        path.name,
-                        category,
-                        stage,
-                        path.suffix.lower(),
-                        stat.st_size,
-                        datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
-                        info["relative_path"],
-                        info["folder"],
-                        row["resource_kind"] or info["kind"],
-                        related,
-                        now_text(),
-                        str(path),
-                    ),
-                )
-                updated += 1
-            else:
-                conn.execute(
-                    """
-                    insert into materials
-                    (name, category, stage, path, ext, size, mtime, note, pinned,
-                     relative_path, folder, resource_kind, related_professor, missing,
-                     created_at, updated_at)
-                    values (?, ?, ?, ?, ?, ?, ?, '', 0, ?, ?, ?, ?, 0, ?, ?)
-                    """,
-                    (
-                        path.name,
-                        info["category"],
-                        info["stage"],
-                        str(path),
-                        path.suffix.lower(),
-                        stat.st_size,
-                        datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
-                        info["relative_path"],
-                        info["folder"],
-                        info["kind"],
-                        info["related_professor"],
-                        now_text(),
-                        now_text(),
-                    ),
-                )
-                inserted += 1
+        for root, directory_names, file_names in os.walk(SOURCE_DIR):
+            directory_names[:] = [
+                name for name in directory_names if name.lower() not in IGNORED_DIRECTORY_NAMES
+            ]
+            for file_name in file_names:
+                path = Path(root) / file_name
+                if path.suffix.lower() in IGNORED_FILE_SUFFIXES or path.name.startswith("~$"):
+                    continue
+                stat = path.stat()
+                info = classify_material(path, names)
+                row = conn.execute("select * from materials where path = ?", (str(path),)).fetchone()
+                if row:
+                    category = normalize_category(row["category"]) if row["category"] else info["category"]
+                    stage = row["stage"] or default_stage_for_category(category)
+                    related = row["related_professor"] or info["related_professor"]
+                    conn.execute(
+                        """
+                        update materials
+                        set name = ?, category = ?, stage = ?, ext = ?, size = ?, mtime = ?,
+                            relative_path = ?, folder = ?, resource_kind = ?,
+                            related_professor = ?, missing = 0, updated_at = ?
+                        where path = ?
+                        """,
+                        (
+                            path.name,
+                            category,
+                            stage,
+                            path.suffix.lower(),
+                            stat.st_size,
+                            datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                            info["relative_path"],
+                            info["folder"],
+                            row["resource_kind"] or info["kind"],
+                            related,
+                            now_text(),
+                            str(path),
+                        ),
+                    )
+                    updated += 1
+                else:
+                    conn.execute(
+                        """
+                        insert into materials
+                        (name, category, stage, path, ext, size, mtime, note, pinned,
+                         relative_path, folder, resource_kind, related_professor, missing,
+                         created_at, updated_at)
+                        values (?, ?, ?, ?, ?, ?, ?, '', 0, ?, ?, ?, ?, 0, ?, ?)
+                        """,
+                        (
+                            path.name,
+                            info["category"],
+                            info["stage"],
+                            str(path),
+                            path.suffix.lower(),
+                            stat.st_size,
+                            datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                            info["relative_path"],
+                            info["folder"],
+                            info["kind"],
+                            info["related_professor"],
+                            now_text(),
+                            now_text(),
+                        ),
+                    )
+                    inserted += 1
+        ensure_professors_from_letter_materials(conn)
         missing = conn.execute("select count(*) as n from materials where missing = 1").fetchone()["n"]
-    return {"inserted": inserted, "updated": updated, "missing": missing}
+    return {"inserted": inserted, "updated": updated, "missing": missing, "purged": purged}
 
 
 def sanitize_material_paths(conn: sqlite3.Connection) -> None:
     """Hide stale rows copied from another machine or an older project path."""
-    rows = conn.execute("select id, path from materials").fetchall()
+    rows = conn.execute("select id, path from materials where missing = 0").fetchall()
     for row in rows:
         path = Path(row["path"])
         if not is_safe_path(path) or not path.exists():
@@ -178,11 +215,45 @@ def seed_professors_from_letters() -> None:
                 """
                 insert into professors
                 (name, status, note, created_at, updated_at)
-                values (?, '已准备套磁信', ?, ?, ?)
+                values (?, '待补充', ?, ?, ?)
                 """,
                 (name, f"已有关联套磁信：{path.name}", now_text(), now_text()),
             )
             existing.add(name)
+        ensure_professors_from_letter_materials(conn)
+
+
+def ensure_professors_from_letter_materials(conn: sqlite3.Connection) -> int:
+    created = 0
+    rows = conn.execute(
+        """
+        select related_professor, name
+        from materials
+        where missing = 0
+          and resource_kind = '套磁信'
+          and trim(related_professor) != ''
+        order by mtime asc, id asc
+        """
+    ).fetchall()
+    existing = {row["name"] for row in conn.execute("select name from professors where trim(name) != ''").fetchall()}
+    max_order = conn.execute("select coalesce(max(display_order), 0) as n from professors where status != '已归档'").fetchone()["n"]
+    blocked = {"套磁信", "模板", "申请书", "自我介绍"}
+    for row in rows:
+        name = clean_professor_name(row["related_professor"])
+        if not name or name in existing or name in blocked or any(word in name for word in blocked):
+            continue
+        max_order += 1
+        conn.execute(
+            """
+            insert into professors
+            (name, status, note, display_order, created_at, updated_at)
+            values (?, '待补充', ?, ?, ?, ?)
+            """,
+            (name, f"已有关联套磁信：{row['name']}", max_order, now_text(), now_text()),
+        )
+        existing.add(name)
+        created += 1
+    return created
 
 
 def normalize_existing_materials() -> None:
@@ -201,9 +272,56 @@ def cleanup_generated_records() -> None:
         conn.execute("delete from professors where name = '自我介绍' and coalesce(email, '') = ''")
         conn.execute("update materials set category = '面试', stage = '面试', resource_kind = '面试材料', related_professor = '' where name like '%自我介绍%'")
         conn.execute("update materials set resource_kind = '申请书' where name like '%申请书%'")
+        conn.execute(
+            """
+            update professors
+            set status = '待补充', updated_at = ?
+            where status = '已准备套磁信'
+              and note like '已有关联套磁信：%'
+              and coalesce(school, '') = ''
+              and coalesce(college, '') = ''
+              and coalesce(direction, '') = ''
+              and coalesce(email, '') = ''
+              and coalesce(homepage, '') = ''
+            """,
+            (now_text(),),
+        )
+        conn.execute(
+            """
+            delete from professors
+            where status in ('已准备套磁信', '待补充')
+              and (note like '已有关联套磁信：%' or note like '由套磁信文件名自动识别：%')
+              and coalesce(school, '') = ''
+              and coalesce(college, '') = ''
+              and coalesce(direction, '') = ''
+              and coalesce(email, '') = ''
+              and coalesce(homepage, '') = ''
+              and exists (
+                  select 1
+                  from professors as real_prof
+                  where real_prof.name = professors.name
+                    and real_prof.id != professors.id
+                    and (
+                        real_prof.status not in ('已准备套磁信', '待补充')
+                        or coalesce(real_prof.school, '') != ''
+                        or coalesce(real_prof.college, '') != ''
+                        or coalesce(real_prof.direction, '') != ''
+                        or coalesce(real_prof.email, '') != ''
+                        or coalesce(real_prof.homepage, '') != ''
+                        or (
+                            coalesce(real_prof.note, '') != ''
+                            and real_prof.note not like '已有关联套磁信：%'
+                            and real_prof.note not like '由套磁信文件名自动识别：%'
+                        )
+                    )
+              )
+            """
+        )
         conn.execute("update materials set related_professor = replace(related_professor, 'NJUST-', '') where related_professor like 'NJUST-%'")
         conn.execute("delete from professors where name like 'NJUST-%' and replace(name, 'NJUST-', '') in (select name from professors)")
         conn.execute("update professors set name = replace(name, 'NJUST-', '') where name like 'NJUST-%'")
+        conn.execute("update materials set related_professor = ltrim(related_professor, '-_—－ ') where related_professor like '-%' or related_professor like '_%' or related_professor like '—%' or related_professor like '－%'")
+        conn.execute("update professors set name = ltrim(name, '-_—－ ') where name like '-%' or name like '_%' or name like '—%' or name like '－%'")
 
 
 def get_material(row_id: int) -> sqlite3.Row | None:
@@ -241,6 +359,89 @@ def resource_groups() -> dict:
         folders[folder_name]["count"] += 1
         folders[folder_name]["items"].append(row)
     return {"byCategory": list(groups.values()), "byFolder": list(folders.values())}
+
+
+def resource_directory(relative_path: str = "", query: str = "", limit: int = 200) -> dict:
+    """Return one directory level, or a bounded database search result."""
+    limit = max(1, min(int(limit or 200), 300))
+    query = str(query or "").strip()
+    if query:
+        search_columns = ["name", "relative_path", "category", "resource_kind", "related_professor", "related_program", "note"]
+        where = " or ".join(f"{column} like ?" for column in search_columns)
+        params = [f"%{query}%"] * len(search_columns)
+        with connect() as conn:
+            rows = rows_to_dicts(
+                conn.execute(
+                    f"select * from materials where missing = 0 and ({where}) order by pinned desc, mtime desc, id desc limit ?",
+                    [*params, limit],
+                ).fetchall()
+            )
+        items = []
+        for row in rows:
+            if is_ignored_material_path(Path(row["path"])):
+                continue
+            row["actions"] = material_actions(row)
+            items.append(row)
+        return {"mode": "search", "query": query, "items": items, "limit": limit, "truncated": len(rows) >= limit}
+
+    relative = Path(str(relative_path or "").replace("/", os.sep))
+    current = (SOURCE_DIR / relative).resolve()
+    if not is_safe_path(current) or (current != SOURCE_DIR and SOURCE_DIR not in current.parents):
+        raise ValueError("资源目录路径不正确")
+    if not current.exists() or not current.is_dir():
+        raise FileNotFoundError("资源目录不存在")
+
+    directories = []
+    for child in sorted((item for item in current.iterdir() if item.is_dir()), key=lambda item: item.name.casefold()):
+        if is_ignored_material_path(child):
+            continue
+        visible_children = 0
+        try:
+            for entry in os.scandir(child):
+                entry_path = Path(entry.path)
+                if is_ignored_material_path(entry_path) or entry.name.startswith("~$"):
+                    continue
+                visible_children += 1
+        except OSError:
+            pass
+        directories.append(
+            {
+                "name": child.name,
+                "relativePath": child.relative_to(SOURCE_DIR).as_posix(),
+                "path": str(child),
+                "childCount": visible_children,
+            }
+        )
+
+    folder_key = str(current.relative_to(SOURCE_DIR.parent))
+    with connect() as conn:
+        rows = rows_to_dicts(
+            conn.execute(
+                "select * from materials where missing = 0 and folder = ? order by pinned desc, name asc",
+                (folder_key,),
+            ).fetchall()
+        )
+    files = []
+    for row in rows:
+        if is_ignored_material_path(Path(row["path"])):
+            continue
+        row["actions"] = material_actions(row)
+        files.append(row)
+
+    parts = list(relative.parts) if str(relative) not in {"", "."} else []
+    breadcrumbs = [{"name": "保研准备", "relativePath": ""}]
+    breadcrumbs.extend(
+        {"name": part, "relativePath": Path(*parts[: index + 1]).as_posix()}
+        for index, part in enumerate(parts)
+    )
+    return {
+        "mode": "directory",
+        "relativePath": "" if current == SOURCE_DIR else current.relative_to(SOURCE_DIR).as_posix(),
+        "path": str(current),
+        "breadcrumbs": breadcrumbs,
+        "directories": directories,
+        "files": files,
+    }
 
 
 def delete_material_file(row_id: int) -> dict:
